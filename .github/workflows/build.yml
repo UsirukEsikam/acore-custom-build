@@ -106,12 +106,26 @@ jobs:
             -t "${IMAGE_PREFIX}/acore-wotlk-db-import:${BUILD_TAG}" \
             .
 
+      - name: Build client-data
+        working-directory: azerothcore
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --target client-data \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            -f apps/docker/Dockerfile \
+            -t "${IMAGE_PREFIX}/acore-wotlk-client-data:latest-arm64" \
+            -t "${IMAGE_PREFIX}/acore-wotlk-client-data:${BUILD_TAG}" \
+            .
+
       - name: Verify images
         run: |
           for image in \
             "${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64" \
             "${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64" \
-            "${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64"
+            "${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64" \
+            "${IMAGE_PREFIX}/acore-wotlk-client-data:latest-arm64"
           do
             PLATFORM="$(
               docker image inspect "$image" \
@@ -135,7 +149,8 @@ jobs:
           for image in \
             acore-wotlk-worldserver \
             acore-wotlk-authserver \
-            acore-wotlk-db-import
+            acore-wotlk-db-import \
+            acore-wotlk-client-data
           do
             docker push "${IMAGE_PREFIX}/${image}:latest-arm64"
             docker push "${IMAGE_PREFIX}/${image}:${BUILD_TAG}"
@@ -150,3 +165,4 @@ jobs:
           echo "- Challenge Modes: ${CHALLENGE_SHA}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Challenge Modes fix: upstream PR 63" >> "$GITHUB_STEP_SUMMARY"
           echo "- Build tag: ${BUILD_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ${IMAGE_PREFIX}/acore-wotlk-client-data:latest-arm64" >> "$GITHUB_STEP_SUMMARY"
