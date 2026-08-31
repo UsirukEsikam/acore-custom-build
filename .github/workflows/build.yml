@@ -1,7 +1,7 @@
 name: Build AzerothCore ARM64
 
-on:
-  workflow_dispatch:
+"on":
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -15,16 +15,14 @@ jobs:
     steps:
       - name: Clone AzerothCore
         run: |
-          git clone \
-            --depth 1 \
+          git clone --depth 1 \
             https://github.com/azerothcore/azerothcore-wotlk.git \
             azerothcore
 
       - name: Clone AutoBalance
         working-directory: azerothcore
         run: |
-          git clone \
-            --depth 1 \
+          git clone --depth 1 \
             https://github.com/azerothcore/mod-autobalance.git \
             modules/mod-autobalance
 
@@ -32,7 +30,6 @@ jobs:
         working-directory: azerothcore
         run: |
           git clone \
-            --depth 1 \
             https://github.com/ZhengPeiRu21/mod-challenge-modes.git \
             modules/mod-challenge-modes
 
@@ -41,13 +38,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git fetch \
-            origin \
-            refs/pull/63/head:refs/remotes/origin/pr-63
-
-          git cherry-pick \
-            80bbf23a875d34f484d5e23e00a7d489a807f8ca
+          git fetch origin pull/63/head:pr-63
+          git cherry-pick 80bbf23a875d34f484d5e23e00a7d489a807f8ca
 
       - name: Record source revisions
         working-directory: azerothcore
@@ -63,13 +55,11 @@ jobs:
           BUILD_TAG="${CORE_SHORT}-${AUTOBALANCE_SHORT}-${CHALLENGE_SHORT}"
           OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
 
-          {
-            echo "CORE_SHA=${CORE_SHA}"
-            echo "AUTOBALANCE_SHA=${AUTOBALANCE_SHA}"
-            echo "CHALLENGE_SHA=${CHALLENGE_SHA}"
-            echo "BUILD_TAG=${BUILD_TAG}"
-            echo "IMAGE_PREFIX=ghcr.io/${OWNER_LC}"
-          } >> "$GITHUB_ENV"
+          echo "CORE_SHA=${CORE_SHA}" >> "$GITHUB_ENV"
+          echo "AUTOBALANCE_SHA=${AUTOBALANCE_SHA}" >> "$GITHUB_ENV"
+          echo "CHALLENGE_SHA=${CHALLENGE_SHA}" >> "$GITHUB_ENV"
+          echo "BUILD_TAG=${BUILD_TAG}" >> "$GITHUB_ENV"
+          echo "IMAGE_PREFIX=ghcr.io/${OWNER_LC}" >> "$GITHUB_ENV"
 
       - name: Build worldserver
         working-directory: azerothcore
@@ -129,19 +119,16 @@ jobs:
             )"
 
             echo "${image} -> ${PLATFORM}"
-
-            if [ "${PLATFORM}" != "linux/arm64" ]; then
-              echo "Unexpected image platform: ${PLATFORM}" >&2
-              exit 1
-            fi
+            test "${PLATFORM}" = "linux/arm64"
           done
 
       - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | docker login ghcr.io \
-                -u "${{ github.actor }}" \
-                --password-stdin
+          echo "${GHCR_TOKEN}" | docker login ghcr.io \
+            -u "${GITHUB_ACTOR}" \
+            --password-stdin
 
       - name: Push images
         run: |
@@ -156,17 +143,10 @@ jobs:
 
       - name: Build summary
         run: |
-          {
-            echo "## AzerothCore ARM64 build"
-            echo
-            echo "- Core: \`${CORE_SHA}\`"
-            echo "- AutoBalance: \`${AUTOBALANCE_SHA}\`"
-            echo "- Challenge Modes: \`${CHALLENGE_SHA}\`"
-            echo "- Challenge Modes compatibility fix: upstream PR #63"
-            echo "- Build tag: \`${BUILD_TAG}\`"
-            echo
-            echo "Images:"
-            echo "- \`${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64\`"
-            echo "- \`${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64\`"
-            echo "- \`${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "## AzerothCore ARM64 build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Core: ${CORE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- AutoBalance: ${AUTOBALANCE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Challenge Modes: ${CHALLENGE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Challenge Modes fix: upstream PR 63" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Build tag: ${BUILD_TAG}" >> "$GITHUB_STEP_SUMMARY"
