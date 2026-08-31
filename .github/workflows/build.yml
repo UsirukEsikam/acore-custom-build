@@ -1,3 +1,4 @@
+```yaml
 name: Build AzerothCore ARM64
 
 on:
@@ -20,7 +21,7 @@ jobs:
             https://github.com/azerothcore/azerothcore-wotlk.git \
             azerothcore
 
-      - name: Clone modules
+      - name: Clone AutoBalance
         working-directory: azerothcore
         run: |
           git clone \
@@ -28,52 +29,26 @@ jobs:
             https://github.com/azerothcore/mod-autobalance.git \
             modules/mod-autobalance
 
+      - name: Clone Challenge Modes
+        working-directory: azerothcore
+        run: |
           git clone \
             --depth 1 \
             https://github.com/ZhengPeiRu21/mod-challenge-modes.git \
             modules/mod-challenge-modes
 
-      - name: Patch Challenge Modes for current AzerothCore API
-        working-directory: azerothcore
+      - name: Apply upstream Challenge Modes PR 63
+        working-directory: azerothcore/modules/mod-challenge-modes
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          path = Path(
-              "modules/mod-challenge-modes/src/ChallengeModes.cpp"
-          )
+          git fetch \
+            origin \
+            refs/pull/63/head:refs/remotes/origin/pr-63
 
-          old = (
-              "void OnPlayerResurrect(Player* player, "
-              "float /*restore_percent*/, "
-              "bool /*applySickness*/) override"
-          )
-
-          new = (
-              "void OnPlayerResurrect(Player* player, "
-              "float /*restore_percent*/, "
-              "bool& /*applySickness*/) override"
-          )
-
-          text = path.read_text()
-
-          count = text.count(old)
-
-          if count == 0:
-              raise SystemExit(
-                  "Expected Challenge Modes API signature not found; "
-                  "upstream may already have changed."
-              )
-
-          text = text.replace(old, new)
-
-          path.write_text(text)
-
-          print(
-              f"Patched {count} Challenge Modes "
-              "OnPlayerResurrect signature(s)."
-          )
-          PY
+          git cherry-pick \
+            80bbf23a875d34f484d5e23e00a7d489a807f8ca
 
       - name: Record source revisions
         working-directory: azerothcore
@@ -188,6 +163,7 @@ jobs:
             echo "- Core: \`${CORE_SHA}\`"
             echo "- AutoBalance: \`${AUTOBALANCE_SHA}\`"
             echo "- Challenge Modes: \`${CHALLENGE_SHA}\`"
+            echo "- Challenge Modes compatibility fix: upstream PR #63"
             echo "- Build tag: \`${BUILD_TAG}\`"
             echo
             echo "Images:"
@@ -195,3 +171,4 @@ jobs:
             echo "- \`${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64\`"
             echo "- \`${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64\`"
           } >> "$GITHUB_STEP_SUMMARY"
+```
