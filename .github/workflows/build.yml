@@ -67,7 +67,7 @@ jobs:
           docker build \
             --platform linux/arm64 \
             --target worldserver \
-            --build-arg CTOOLS_BUILD=none \
+            --build-arg CTOOLS_BUILD=db-only \
             --build-arg CMODULES=static \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
@@ -82,7 +82,7 @@ jobs:
           docker build \
             --platform linux/arm64 \
             --target authserver \
-            --build-arg CTOOLS_BUILD=none \
+            --build-arg CTOOLS_BUILD=db-only \
             --build-arg CMODULES=static \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
@@ -97,7 +97,7 @@ jobs:
           docker build \
             --platform linux/arm64 \
             --target db-import \
-            --build-arg CTOOLS_BUILD=none \
+            --build-arg CTOOLS_BUILD=db-only \
             --build-arg CMODULES=static \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
