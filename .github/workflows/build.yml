@@ -33,6 +33,41 @@ jobs:
             https://github.com/ZhengPeiRu21/mod-challenge-modes.git \
             modules/mod-challenge-modes
 
+      - name: Patch Challenge Modes for current AzerothCore API
+        working-directory: azerothcore
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              "modules/mod-challenge-modes/src/ChallengeModes.cpp"
+          )
+
+          old = (
+              "void OnPlayerResurrect(Player* player, "
+              "float /*restore_percent*/, "
+              "bool /*applySickness*/) override"
+          )
+
+          new = (
+              "void OnPlayerResurrect(Player* player, "
+              "float /*restore_percent*/, "
+              "bool& /*applySickness*/) override"
+          )
+
+          text = path.read_text()
+
+          if old not in text:
+              raise SystemExit(
+                  "Expected Challenge Modes API signature not found; "
+                  "upstream may have changed."
+              )
+
+          path.write_text(text.replace(old, new, 1))
+
+          print("Patched Challenge Modes OnPlayerResurrect signature.")
+          PY
+
       - name: Record source revisions
         working-directory: azerothcore
         run: |
