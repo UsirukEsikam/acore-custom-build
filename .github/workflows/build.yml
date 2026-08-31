@@ -1,0 +1,155 @@
+name: Build AzerothCore ARM64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+
+    steps:
+      - name: Clone AzerothCore
+        run: |
+          git clone \
+            --depth 1 \
+            https://github.com/azerothcore/azerothcore-wotlk.git \
+            azerothcore
+
+      - name: Clone modules
+        working-directory: azerothcore
+        run: |
+          git clone \
+            --depth 1 \
+            https://github.com/azerothcore/mod-autobalance.git \
+            modules/mod-autobalance
+
+          git clone \
+            --depth 1 \
+            https://github.com/ZhengPeiRu21/mod-challenge-modes.git \
+            modules/mod-challenge-modes
+
+      - name: Record source revisions
+        working-directory: azerothcore
+        run: |
+          CORE_SHA="$(git rev-parse HEAD)"
+          AUTOBALANCE_SHA="$(git -C modules/mod-autobalance rev-parse HEAD)"
+          CHALLENGE_SHA="$(git -C modules/mod-challenge-modes rev-parse HEAD)"
+
+          CORE_SHORT="${CORE_SHA:0:12}"
+          AUTOBALANCE_SHORT="${AUTOBALANCE_SHA:0:12}"
+          CHALLENGE_SHORT="${CHALLENGE_SHA:0:12}"
+
+          BUILD_TAG="${CORE_SHORT}-${AUTOBALANCE_SHORT}-${CHALLENGE_SHORT}"
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+
+          {
+            echo "CORE_SHA=${CORE_SHA}"
+            echo "AUTOBALANCE_SHA=${AUTOBALANCE_SHA}"
+            echo "CHALLENGE_SHA=${CHALLENGE_SHA}"
+            echo "BUILD_TAG=${BUILD_TAG}"
+            echo "IMAGE_PREFIX=ghcr.io/${OWNER_LC}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build worldserver
+        working-directory: azerothcore
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --target worldserver \
+            --build-arg CTOOLS_BUILD=none \
+            --build-arg CMODULES=static \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            -f apps/docker/Dockerfile \
+            -t "${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64" \
+            -t "${IMAGE_PREFIX}/acore-wotlk-worldserver:${BUILD_TAG}" \
+            .
+
+      - name: Build authserver
+        working-directory: azerothcore
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --target authserver \
+            --build-arg CTOOLS_BUILD=none \
+            --build-arg CMODULES=static \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            -f apps/docker/Dockerfile \
+            -t "${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64" \
+            -t "${IMAGE_PREFIX}/acore-wotlk-authserver:${BUILD_TAG}" \
+            .
+
+      - name: Build db-import
+        working-directory: azerothcore
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --target db-import \
+            --build-arg CTOOLS_BUILD=none \
+            --build-arg CMODULES=static \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            -f apps/docker/Dockerfile \
+            -t "${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64" \
+            -t "${IMAGE_PREFIX}/acore-wotlk-db-import:${BUILD_TAG}" \
+            .
+
+      - name: Verify images
+        run: |
+          for image in \
+            "${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64" \
+            "${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64" \
+            "${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64"
+          do
+            PLATFORM="$(
+              docker image inspect "$image" \
+                --format '{{.Os}}/{{.Architecture}}'
+            )"
+
+            echo "${image} -> ${PLATFORM}"
+
+            if [ "${PLATFORM}" != "linux/arm64" ]; then
+              echo "Unexpected image platform: ${PLATFORM}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io \
+                -u "${{ github.actor }}" \
+                --password-stdin
+
+      - name: Push images
+        run: |
+          for image in \
+            acore-wotlk-worldserver \
+            acore-wotlk-authserver \
+            acore-wotlk-db-import
+          do
+            docker push "${IMAGE_PREFIX}/${image}:latest-arm64"
+            docker push "${IMAGE_PREFIX}/${image}:${BUILD_TAG}"
+          done
+
+      - name: Build summary
+        run: |
+          {
+            echo "## AzerothCore ARM64 build"
+            echo
+            echo "- Core: \`${CORE_SHA}\`"
+            echo "- AutoBalance: \`${AUTOBALANCE_SHA}\`"
+            echo "- Challenge Modes: \`${CHALLENGE_SHA}\`"
+            echo "- Build tag: \`${BUILD_TAG}\`"
+            echo
+            echo "Images:"
+            echo "- \`${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64\`"
+            echo "- \`${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64\`"
+            echo "- \`${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64\`"
+          } >> "$GITHUB_STEP_SUMMARY"
