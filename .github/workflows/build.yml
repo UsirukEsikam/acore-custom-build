@@ -57,15 +57,22 @@ jobs:
 
           text = path.read_text()
 
-          if old not in text:
+          count = text.count(old)
+
+          if count == 0:
               raise SystemExit(
                   "Expected Challenge Modes API signature not found; "
-                  "upstream may have changed."
+                  "upstream may already have changed."
               )
 
-          path.write_text(text.replace(old, new, 1))
+          text = text.replace(old, new)
 
-          print("Patched Challenge Modes OnPlayerResurrect signature.")
+          path.write_text(text)
+
+          print(
+              f"Patched {count} Challenge Modes "
+              "OnPlayerResurrect signature(s)."
+          )
           PY
 
       - name: Record source revisions
