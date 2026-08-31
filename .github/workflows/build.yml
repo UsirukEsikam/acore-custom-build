@@ -1,4 +1,3 @@
-```yaml
 name: Build AzerothCore ARM64
 
 on:
@@ -171,4 +170,3 @@ jobs:
             echo "- \`${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64\`"
             echo "- \`${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64\`"
           } >> "$GITHUB_STEP_SUMMARY"
-```
