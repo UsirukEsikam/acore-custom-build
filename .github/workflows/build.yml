@@ -1,11 +1,39 @@
 name: Build AzerothCore ARM64
 
 "on":
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      core_ref:
+        description: AzerothCore branch, tag, or commit
+        required: true
+        default: master
+        type: string
+
+      autobalance_ref:
+        description: AutoBalance branch, tag, or commit
+        required: true
+        default: master
+        type: string
+
+      hardcore_ref:
+        description: Hardcore branch, tag, or commit
+        required: true
+        default: main
+        type: string
+
+      update_latest:
+        description: Update latest-arm64 tags after a successful build
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
   packages: write
+
+concurrency:
+  group: azerothcore-arm64-build
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -13,57 +41,60 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - name: Clone AzerothCore
-        run: |
-          git clone --depth 1 \
-            https://github.com/azerothcore/azerothcore-wotlk.git \
-            azerothcore
+      - name: Checkout AzerothCore
+        uses: actions/checkout@v7
+        with:
+          repository: azerothcore/azerothcore-wotlk
+          ref: ${{ inputs.core_ref }}
+          path: azerothcore
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Clone AutoBalance
-        working-directory: azerothcore
-        run: |
-          git clone --depth 1 \
-            https://github.com/azerothcore/mod-autobalance.git \
-            modules/mod-autobalance
+      - name: Checkout AutoBalance
+        uses: actions/checkout@v7
+        with:
+          repository: azerothcore/mod-autobalance
+          ref: ${{ inputs.autobalance_ref }}
+          path: azerothcore/modules/mod-autobalance
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Clone Challenge Modes
-        working-directory: azerothcore
-        run: |
-          git clone \
-            https://github.com/ZhengPeiRu21/mod-challenge-modes.git \
-            modules/mod-challenge-modes
-
-      - name: Apply upstream Challenge Modes PR 63
-        working-directory: azerothcore/modules/mod-challenge-modes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin pull/63/head:pr-63
-          git cherry-pick 80bbf23a875d34f484d5e23e00a7d489a807f8ca
+      - name: Checkout Hardcore
+        uses: actions/checkout@v7
+        with:
+          repository: Zindokar/mod-hardcore
+          ref: ${{ inputs.hardcore_ref }}
+          path: azerothcore/modules/mod-hardcore
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Record source revisions
         working-directory: azerothcore
         run: |
+          set -euo pipefail
+
           CORE_SHA="$(git rev-parse HEAD)"
           AUTOBALANCE_SHA="$(git -C modules/mod-autobalance rev-parse HEAD)"
-          CHALLENGE_SHA="$(git -C modules/mod-challenge-modes rev-parse HEAD)"
+          HARDCORE_SHA="$(git -C modules/mod-hardcore rev-parse HEAD)"
 
           CORE_SHORT="${CORE_SHA:0:12}"
           AUTOBALANCE_SHORT="${AUTOBALANCE_SHA:0:12}"
-          CHALLENGE_SHORT="${CHALLENGE_SHA:0:12}"
+          HARDCORE_SHORT="${HARDCORE_SHA:0:12}"
 
-          BUILD_TAG="${CORE_SHORT}-${AUTOBALANCE_SHORT}-${CHALLENGE_SHORT}"
+          BUILD_TAG="arm64-${CORE_SHORT}-${AUTOBALANCE_SHORT}-${HARDCORE_SHORT}"
           OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
 
           echo "CORE_SHA=${CORE_SHA}" >> "$GITHUB_ENV"
           echo "AUTOBALANCE_SHA=${AUTOBALANCE_SHA}" >> "$GITHUB_ENV"
-          echo "CHALLENGE_SHA=${CHALLENGE_SHA}" >> "$GITHUB_ENV"
+          echo "HARDCORE_SHA=${HARDCORE_SHA}" >> "$GITHUB_ENV"
           echo "BUILD_TAG=${BUILD_TAG}" >> "$GITHUB_ENV"
           echo "IMAGE_PREFIX=ghcr.io/${OWNER_LC}" >> "$GITHUB_ENV"
 
       - name: Build worldserver
         working-directory: azerothcore
         run: |
+          set -euo pipefail
+
           docker build \
             --platform linux/arm64 \
             --target worldserver \
@@ -71,14 +102,19 @@ jobs:
             --build-arg CMODULES=static \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            --label "org.opencontainers.image.version=${BUILD_TAG}" \
+            --label "io.azerothcore.core.revision=${CORE_SHA}" \
+            --label "io.azerothcore.mod-autobalance.revision=${AUTOBALANCE_SHA}" \
+            --label "io.azerothcore.mod-hardcore.revision=${HARDCORE_SHA}" \
             -f apps/docker/Dockerfile \
-            -t "${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64" \
             -t "${IMAGE_PREFIX}/acore-wotlk-worldserver:${BUILD_TAG}" \
             .
 
       - name: Build authserver
         working-directory: azerothcore
         run: |
+          set -euo pipefail
+
           docker build \
             --platform linux/arm64 \
             --target authserver \
@@ -86,14 +122,19 @@ jobs:
             --build-arg CMODULES=static \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            --label "org.opencontainers.image.version=${BUILD_TAG}" \
+            --label "io.azerothcore.core.revision=${CORE_SHA}" \
+            --label "io.azerothcore.mod-autobalance.revision=${AUTOBALANCE_SHA}" \
+            --label "io.azerothcore.mod-hardcore.revision=${HARDCORE_SHA}" \
             -f apps/docker/Dockerfile \
-            -t "${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64" \
             -t "${IMAGE_PREFIX}/acore-wotlk-authserver:${BUILD_TAG}" \
             .
 
       - name: Build db-import
         working-directory: azerothcore
         run: |
+          set -euo pipefail
+
           docker build \
             --platform linux/arm64 \
             --target db-import \
@@ -101,68 +142,125 @@ jobs:
             --build-arg CMODULES=static \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            --label "org.opencontainers.image.version=${BUILD_TAG}" \
+            --label "io.azerothcore.core.revision=${CORE_SHA}" \
+            --label "io.azerothcore.mod-autobalance.revision=${AUTOBALANCE_SHA}" \
+            --label "io.azerothcore.mod-hardcore.revision=${HARDCORE_SHA}" \
             -f apps/docker/Dockerfile \
-            -t "${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64" \
             -t "${IMAGE_PREFIX}/acore-wotlk-db-import:${BUILD_TAG}" \
             .
 
       - name: Build client-data
         working-directory: azerothcore
         run: |
+          set -euo pipefail
+
           docker build \
             --platform linux/arm64 \
             --target client-data \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${CORE_SHA}" \
+            --label "org.opencontainers.image.version=${BUILD_TAG}" \
             -f apps/docker/Dockerfile \
-            -t "${IMAGE_PREFIX}/acore-wotlk-client-data:latest-arm64" \
             -t "${IMAGE_PREFIX}/acore-wotlk-client-data:${BUILD_TAG}" \
             .
 
       - name: Verify images
         run: |
-          for image in \
-            "${IMAGE_PREFIX}/acore-wotlk-worldserver:latest-arm64" \
-            "${IMAGE_PREFIX}/acore-wotlk-authserver:latest-arm64" \
-            "${IMAGE_PREFIX}/acore-wotlk-db-import:latest-arm64" \
-            "${IMAGE_PREFIX}/acore-wotlk-client-data:latest-arm64"
-          do
-            PLATFORM="$(
-              docker image inspect "$image" \
-                --format '{{.Os}}/{{.Architecture}}'
-            )"
+          set -euo pipefail
 
-            echo "${image} -> ${PLATFORM}"
-            test "${PLATFORM}" = "linux/arm64"
-          done
-
-      - name: Log in to GHCR
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "${GHCR_TOKEN}" | docker login ghcr.io \
-            -u "${GITHUB_ACTOR}" \
-            --password-stdin
-
-      - name: Push images
-        run: |
           for image in \
             acore-wotlk-worldserver \
             acore-wotlk-authserver \
             acore-wotlk-db-import \
             acore-wotlk-client-data
           do
-            docker push "${IMAGE_PREFIX}/${image}:latest-arm64"
+            IMAGE="${IMAGE_PREFIX}/${image}:${BUILD_TAG}"
+
+            PLATFORM="$(
+              docker image inspect "${IMAGE}" \
+                --format '{{.Os}}/{{.Architecture}}'
+            )"
+
+            echo "${IMAGE} -> ${PLATFORM}"
+            test "${PLATFORM}" = "linux/arm64"
+          done
+
+      - name: Verify modules
+        run: |
+          set -euo pipefail
+
+          IMAGE="${IMAGE_PREFIX}/acore-wotlk-worldserver:${BUILD_TAG}"
+
+          docker run --rm \
+            --entrypoint sh \
+            "${IMAGE}" \
+            -c '
+              test -f /azerothcore/env/ref/etc/modules/AutoBalance.conf.dist
+              test -f /azerothcore/env/ref/etc/modules/mod_harcore.conf.dist
+            '
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          echo "${GHCR_TOKEN}" | docker login ghcr.io \
+            -u "${GITHUB_ACTOR}" \
+            --password-stdin
+
+      - name: Push immutable images
+        run: |
+          set -euo pipefail
+
+          for image in \
+            acore-wotlk-worldserver \
+            acore-wotlk-authserver \
+            acore-wotlk-db-import \
+            acore-wotlk-client-data
+          do
             docker push "${IMAGE_PREFIX}/${image}:${BUILD_TAG}"
+          done
+
+      - name: Update latest-arm64
+        if: ${{ inputs.update_latest }}
+        run: |
+          set -euo pipefail
+
+          for image in \
+            acore-wotlk-worldserver \
+            acore-wotlk-authserver \
+            acore-wotlk-db-import \
+            acore-wotlk-client-data
+          do
+            docker tag \
+              "${IMAGE_PREFIX}/${image}:${BUILD_TAG}" \
+              "${IMAGE_PREFIX}/${image}:latest-arm64"
+
+            docker push "${IMAGE_PREFIX}/${image}:latest-arm64"
           done
 
       - name: Build summary
         run: |
-          echo "## AzerothCore ARM64 build" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Core: ${CORE_SHA}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- AutoBalance: ${AUTOBALANCE_SHA}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Challenge Modes: ${CHALLENGE_SHA}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Challenge Modes fix: upstream PR 63" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Build tag: ${BUILD_TAG}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ${IMAGE_PREFIX}/acore-wotlk-client-data:latest-arm64" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## AzerothCore ARM64 build"
+            echo
+            echo "- Core: \`${CORE_SHA}\`"
+            echo "- AutoBalance: \`${AUTOBALANCE_SHA}\`"
+            echo "- Hardcore: \`${HARDCORE_SHA}\`"
+            echo "- Build tag: \`${BUILD_TAG}\`"
+            echo
+            echo "### Deployment"
+            echo
+            echo "\`\`\`"
+            echo "ACORE_IMAGE_TAG=${BUILD_TAG}"
+            echo "\`\`\`"
+            echo
+            echo "### Images"
+            echo
+            echo "- ${IMAGE_PREFIX}/acore-wotlk-worldserver:${BUILD_TAG}"
+            echo "- ${IMAGE_PREFIX}/acore-wotlk-authserver:${BUILD_TAG}"
+            echo "- ${IMAGE_PREFIX}/acore-wotlk-db-import:${BUILD_TAG}"
+            echo "- ${IMAGE_PREFIX}/acore-wotlk-client-data:${BUILD_TAG}"
+          } >> "$GITHUB_STEP_SUMMARY"
